@@ -14,7 +14,7 @@ from google.genai import types
 from handbook_dummy_data import POLICIES
 
 MODEL = "gemini-3.6-flash"
-GREEN, GOLD, INK = "#005A36", "#C5A059", "#212529"
+GREEN, GREEN_DARK, GOLD, INK = "#005A36", "#004429", "#C5A059", "#212529"
 
 STARTERS = [
     "How many leave days can I carry over?",
@@ -24,7 +24,7 @@ STARTERS = [
 ]
 
 
-# ------------------------------------------------------------------ page
+# ================================================================== page
 
 st.set_page_config(
     page_title="BIF Handbook Assistant",
@@ -34,28 +34,103 @@ st.set_page_config(
 
 st.markdown(
     f"""
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
     <style>
-      h1 {{
-        color: {GREEN} !important;
-        font-weight: 700 !important;
-        letter-spacing: -0.02em;
-        border-bottom: 3px solid {GOLD};
-        padding-bottom: 10px;
+      html, body, [class*="css"] {{ font-family: 'Inter', sans-serif; }}
+
+      .block-container {{ padding-top: 2rem; }}
+
+      /* ---------- header band ---------- */
+      .hero {{
+        background: linear-gradient(135deg, {GREEN} 0%, {GREEN_DARK} 100%);
+        border-bottom: 4px solid {GOLD};
+        border-radius: 12px 12px 0 0;
+        padding: 22px 26px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 0;
       }}
+      .hero-mark {{
+        width: 46px; height: 46px; flex: none;
+        border-radius: 8px;
+        background: rgba(255,255,255,.14);
+        border: 1px solid rgba(255,255,255,.28);
+        display: flex; align-items: center; justify-content: center;
+        color: #fff; font-weight: 700; font-size: 14px; letter-spacing: .02em;
+      }}
+      .hero-org {{
+        color: {GOLD}; font-size: 11px; font-weight: 600;
+        letter-spacing: .14em; text-transform: uppercase;
+      }}
+      .hero-title {{
+        color: #fff; font-size: 24px; font-weight: 700;
+        letter-spacing: -.02em; line-height: 1.2;
+      }}
+
+      /* ---------- stat strip ---------- */
+      .stats {{
+        background: #FFFFFF;
+        border: 1px solid #E0E5E1;
+        border-top: none;
+        border-radius: 0 0 12px 12px;
+        padding: 10px 26px;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 11.5px;
+        letter-spacing: .04em;
+        color: #6B7370;
+        margin-bottom: 22px;
+      }}
+      .stats b {{ color: {GREEN}; font-weight: 500; }}
+
+      /* ---------- chat bubbles ---------- */
       [data-testid="stChatMessage"] {{
         border: 1px solid #E0E5E1;
-        border-radius: 10px;
+        border-radius: 12px;
+        padding: 4px 8px;
+        margin-bottom: 6px;
       }}
+
+      /* ---------- citation chips ---------- */
+      .chips {{ margin: 6px 0 2px; }}
+      .chip {{
+        display: inline-block;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 11px;
+        letter-spacing: .03em;
+        color: {GREEN};
+        background: #E8F0EB;
+        border: 1px solid #C8DCD0;
+        border-radius: 999px;
+        padding: 3px 10px;
+        margin-right: 6px;
+      }}
+
+      /* ---------- buttons ---------- */
+      .stButton button {{
+        border: 1px solid #D6DCD8;
+        background: #FFFFFF;
+        color: {INK};
+        font-weight: 500;
+        text-align: left;
+      }}
+      .stButton button:hover {{
+        border-color: {GREEN};
+        color: {GREEN};
+        background: #F2F7F4;
+      }}
+
+      /* ---------- sidebar ---------- */
+      [data-testid="stSidebar"] h3 {{ color: {GREEN}; }}
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-st.title("BIF Handbook Assistant")
-st.caption("Bader Investment Fund · fictional test data · every answer cites its policy section")
 
-
-# ------------------------------------------------------------------ handbook index
+# ================================================================== handbook index
 
 SMALL = {"to", "and", "of", "the", "for"}
 ACRONYMS = {"It": "IT", "Ai": "AI", "Bif": "BIF", "Hr": "HR"}
@@ -74,48 +149,103 @@ def tidy(title):
 
 @st.cache_data
 def build_index(text):
-    """Split the handbook into {section number: (document code, text)}."""
-    docs, sections, current = {}, {}, None
+    """
+    Split the handbook into:
+      docs      {code: title}
+      sections  {"2.2": (code, text)}
+      by_doc    {code: [(number, text), ...]}
+      extras    {code: [unnumbered lines]}     e.g. the HR-09 contact list
+    """
+    docs, sections, by_doc, extras = {}, {}, {}, {}
+    current = None
 
     for line in text.splitlines():
         line = line.strip()
+        if not line:
+            continue
 
         header = re.match(r"^([A-Z]{2,4}-\d{2})\s+(.+?)\s*\(updated", line)
         if header:
             current = header.group(1)
             docs[current] = tidy(header.group(2))
+            by_doc[current] = []
+            extras[current] = []
+            continue
+
+        if not current:
             continue
 
         body = re.match(r"^(\d+\.\d+)\s+(.+)$", line)
-        if body and current:
-            sections[body.group(1)] = (current, body.group(2).strip())
+        if body:
+            num, content = body.group(1), body.group(2).strip()
+            sections[num] = (current, content)
+            by_doc[current].append((num, content))
+        else:
+            extras[current].append(line)
 
-    return docs, sections
+    return docs, sections, by_doc, extras
 
 
-DOCS, SECTIONS = build_index(POLICIES)
+DOCS, SECTIONS, BY_DOC, EXTRAS = build_index(POLICIES)
+TEAM_COUNT = sum(1 for line in EXTRAS.get("HR-09", []) if "extension" in line.lower())
 
 
-def cited_sections(answer):
-    """Pull [HR-02 2.2, 2.5] out of an answer and look the sections up."""
-    found = []
+# ================================================================== header
+
+st.markdown(
+    f"""
+    <div class="hero">
+      <div class="hero-mark">BIF</div>
+      <div>
+        <div class="hero-org">Bader Investment Fund</div>
+        <div class="hero-title">Handbook Assistant</div>
+      </div>
+    </div>
+    <div class="stats">
+      <b>{len(DOCS)}</b> documents &nbsp;·&nbsp;
+      <b>{len(SECTIONS)}</b> sections &nbsp;·&nbsp;
+      <b>{TEAM_COUNT}</b> teams &nbsp;·&nbsp;
+      fictional test data
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# ================================================================== citations
+
+def split_citation(answer):
+    """Separate the trailing [HR-02 2.2] from the answer body."""
+    refs = []
     for doc, nums in re.findall(r"\[([A-Z]{2,4}-\d{2})\s*([0-9.,\s]*)\]", answer):
-        for n in re.findall(r"\d+\.\d+", nums):
-            if n in SECTIONS:
-                found.append((doc, n, SECTIONS[n][1]))
-    return found
+        found = re.findall(r"\d+\.\d+", nums)
+        if found:
+            refs += [(doc, n) for n in found]
+        else:
+            refs.append((doc, None))
+
+    body = re.sub(r"\[([A-Z]{2,4}-\d{2})\s*([0-9.,\s]*)\]", "", answer).strip()
+    return body, refs
 
 
-def show_sources(answer):
-    """Render a collapsed 'read the policy' panel under an answer."""
-    for doc, n, text in cited_sections(answer):
-        title = DOCS.get(doc, doc)
-        with st.expander(f"📄  {title} · §{n}"):
-            st.markdown(f"**{doc} §{n}**")
-            st.write(text)
+def render_answer(answer):
+    """Answer text, then citation chips, then a panel with the policy itself."""
+    body, refs = split_citation(answer)
+    st.markdown(body)
+
+    if refs:
+        chips = "".join(
+            f'<span class="chip">{doc}{" §" + n if n else ""}</span>' for doc, n in refs
+        )
+        st.markdown(f'<div class="chips">{chips}</div>', unsafe_allow_html=True)
+
+    for doc, n in refs:
+        if n and n in SECTIONS:
+            with st.expander(f"📄  {DOCS.get(doc, doc)} · §{n}"):
+                st.write(SECTIONS[n][1])
 
 
-# ------------------------------------------------------------------ brain
+# ================================================================== brain
 
 SYSTEM = f"""You are the Bader Investment Fund handbook assistant.
 You answer employee questions using ONLY the handbook at the end of this message.
@@ -155,7 +285,7 @@ if client is None:
 
 
 def stream_answer(messages):
-    """Yield the reply piece by piece, so it types itself onto the screen."""
+    """Yield the reply piece by piece."""
     contents = [
         {
             "role": "user" if m["role"] == "user" else "model",
@@ -181,29 +311,32 @@ def stream_answer(messages):
         yield f"\n\n⚠️ **{type(e).__name__}** — {e}"
 
 
-# ------------------------------------------------------------------ sidebar
+# ================================================================== sidebar
 
 with st.sidebar:
-    st.subheader("About")
-    st.write(
-        "This handbook is **entirely fictional**. Bader Investment Fund "
-        "does not exist and none of these policies are real."
-    )
-    st.write(f"Handbook: **{len(POLICIES):,}** characters · **{len(SECTIONS)}** sections")
-    st.write(f"Model: `{MODEL}`")
+    st.markdown("### The handbook")
+    st.caption("Read any policy directly.")
+
+    for code, title in DOCS.items():
+        with st.expander(f"{code} · {title}"):
+            for num, text in BY_DOC.get(code, []):
+                st.markdown(f"**§{num}** &nbsp; {text}")
+            for line in EXTRAS.get(code, []):
+                st.markdown(f"- {line}")
+
+    st.divider()
 
     if st.button("Clear conversation", use_container_width=True):
         st.session_state.messages = []
         st.rerun()
 
-    st.divider()
     st.caption(
-        "The assistant only sees the handbook text. It has no access to any "
-        "real system, file or record."
+        f"Model `{MODEL}` · {len(POLICIES):,} characters. "
+        "Entirely fictional — Bader Investment Fund does not exist."
     )
 
 
-# ------------------------------------------------------------------ state
+# ================================================================== state
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -212,29 +345,36 @@ if "pending" not in st.session_state:
     st.session_state.pending = None
 
 
-# ------------------------------------------------------------------ starters
+# ================================================================== welcome
 
 if not st.session_state.messages:
-    st.write("")
-    st.markdown("**Try one of these**")
-    cols = st.columns(2)
-    for i, q in enumerate(STARTERS):
-        if cols[i % 2].button(q, key=f"starter_{i}", use_container_width=True):
-            st.session_state.pending = q
-            st.rerun()
-    st.write("")
+    with st.container(border=True):
+        st.markdown("#### Ask about any BIF policy")
+        st.caption(
+            "Working hours, leave, expenses, travel, IT, security, and who to "
+            "contact. Every answer quotes the section it came from — and says "
+            "so plainly when the handbook does not cover your question."
+        )
+        st.write("")
+        cols = st.columns(2)
+        for i, q in enumerate(STARTERS):
+            if cols[i % 2].button(q, key=f"starter_{i}", use_container_width=True):
+                st.session_state.pending = q
+                st.rerun()
 
 
-# ------------------------------------------------------------------ history
+# ================================================================== history
 
 for m in st.session_state.messages:
-    with st.chat_message(m["role"], avatar="📗" if m["role"] == "assistant" else None):
-        st.markdown(m["content"])
-        if m["role"] == "assistant":
-            show_sources(m["content"])
+    if m["role"] == "user":
+        with st.chat_message("user"):
+            st.markdown(m["content"])
+    else:
+        with st.chat_message("assistant", avatar="📗"):
+            render_answer(m["content"])
 
 
-# ------------------------------------------------------------------ turn
+# ================================================================== turn
 
 typed = st.chat_input("Ask about leave, expenses, IT, security...")
 
@@ -247,7 +387,14 @@ if question:
         st.markdown(question)
 
     with st.chat_message("assistant", avatar="📗"):
-        answer = st.write_stream(stream_answer(st.session_state.messages))
-        show_sources(answer)
+        slot = st.empty()
+        answer = ""
+
+        for piece in stream_answer(st.session_state.messages):
+            answer += piece
+            slot.markdown(answer + " ▌")
+
+        slot.empty()
+        render_answer(answer)
 
     st.session_state.messages.append({"role": "assistant", "content": answer})

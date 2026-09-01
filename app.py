@@ -9,7 +9,7 @@ import streamlit as st
 from google import genai
 from google.genai import types
 
-   from handbook_dummy_data import POLICIES
+from handbook_dummy_data import POLICIES
 
 MODEL = "gemini-3.6-flash"
 GREEN, GOLD, INK = "#005A36", "#C5A059", "#212529"
